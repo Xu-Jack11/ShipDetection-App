@@ -1,0 +1,35 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Byte-compiled / optimized / DLL files
+*.so
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# PyTorch checkpoints
+checkpoints/
+*.pt
+*.pth
+
+# Data directories
+data/
+ship_dataset_v0/
+
+# Logs and outputs
+runs/
+logs/
+*.log
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+
+# OS generated files
+.DS_Store
+Thumbs.db

@@ -1,0 +1,26 @@
+model:
+  num_classes: 1
+  backbone_depth: 50
+  fpn_channels: 256
+  gat_levels: ["s2", "s3"]
+  gat_heads: 4
+optimizer:
+  learning_rate: 0.001
+  weight_decay: 0.0005
+  warmup_epochs: 3
+  cosine_anneal: true
+data:
+  train_dir: "./data/train"
+  val_dir: "./data/val"
+  image_size: 640
+  num_workers: 8
+  batch_size: 4
+  source_dir: "./ship_dataset_v0"
+  val_split: 0.2
+  shuffle_seed: 42
+runtime:
+  epochs: 10
+  device: "cuda"
+  amp: true
+  checkpoint_dir: "./checkpoints"
+  resume: null
