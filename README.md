@@ -150,7 +150,7 @@ cd ShipDetection-App
 
 # 2) Create and activate venv
 python -m venv .venv
-.\.venv\Scriptsctivate
+.\.venv\Scripts\activate
 
 # 3) Install dependencies
 python -m pip install --upgrade pip
