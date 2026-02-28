@@ -1,173 +1,192 @@
-# YOLO11 with ResNet + FPN + Graph Attention
+# 船舶目标检测系统（YOLO11 + ResNet + FPN + 图注意力）
 
-This project implements a YOLO11-style object detector with three key upgrades:
+本项目实现了一个面向船舶目标检测的 YOLO11 风格模型，并提供训练、验证、推理和桌面应用封装能力。
 
-- **Backbone:** configurable ResNet (18/34/50) for hierarchical feature extraction.
-- **Neck:** Feature Pyramid Network (FPN) to aggregate multi-scale features.
-- **Enhancement:** Graph Attention modules (GAT) on the S2/S3 pyramid levels before prediction.
+核心改进：
 
-It ships with training, validation, and inference scripts plus a configurable YAML-driven pipeline.
+- 骨干网络：可配置 ResNet（18/34/50）用于多层特征提取。
+- 颈部网络：FPN（特征金字塔）用于多尺度特征融合。
+- 注意力增强：在高分辨率特征层引入图注意力模块（GAT）。
 
-## Folder Layout
+此外，项目已集成 Windows 桌面应用（PySide6），支持可视化检测与结果导出。
 
-```
+## 项目结构
+
+```text
 WorkSpace/
-├── config.yaml                 # Default hyper-parameter configuration
-├── requirements.txt            # Runtime & tooling dependencies
-├── train.py / val.py / predict.py
+├── config.yaml                 # 默认配置（模型/训练/数据/运行参数）
+├── requirements.txt            # 依赖列表
+├── train.py                    # 训练脚本
+├── val.py                      # 验证脚本
+├── predict.py                  # 推理脚本
+├── run_app.py                  # 桌面应用入口
+├── app/
+│   ├── main_window.py          # 桌面 UI
+│   └── infer_engine.py         # 推理引擎封装
 ├── yolo11/
-│   ├── __init__.py
-│   ├── models/                 # Backbone, FPN, GAT, detection head, losses
-│   └── utils/                  # Config loader, dataset helper, decoding
-└── tests/test_model.py         # Smoke tests for model + loss
+│   ├── models/                 # backbone/fpn/gat/head/loss
+│   └── utils/                  # 配置、数据、解码等工具
+└── tests/test_model.py         # 基础测试
 ```
 
-## Quickstart
+## 快速开始
 
 ```powershell
 python -m venv .venv
-.venv\Scripts\activate
+.\.venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-Prepare your dataset in YOLO格式。若已存在 `train/`、`val/` 两个子目录，可直接指向 `data.train_dir` 与 `data.val_dir`。如果只有一个平铺目录（如 `ship_dataset_v0`，图像与标签同级摆放），将该路径填入 `data.source_dir`，首次训练时会自动打乱并按 `data.val_split` 划分为 `train/`、`val/` 两个子目录（默认 80% 训练 / 20% 验证）。
+## 数据集说明
 
-每个标签文件需包含如下格式：
+支持 YOLO 标签格式。每个标签文件每行格式如下：
 
-```
+```text
 <class_id> <x_center> <y_center> <width> <height>
 ```
 
-Values are normalized to `[0, 1]` with respect to image width/height. Update the paths in `config.yaml` (`data.train_dir`, `data.val_dir`) to point at your dataset splits.
+其中坐标是相对于图像宽高归一化到 `[0, 1]` 的数值。
 
-## Training
+你可以使用两种数据组织方式：
+
+1) 已有 train/val 划分
+- `data.train_dir` 指向训练集目录
+- `data.val_dir` 指向验证集目录
+
+2) 平铺目录自动划分
+- 将原始数据目录填入 `data.source_dir`（如 `./ship_dataset_v0`）
+- 首次训练时会按 `data.val_split` 自动划分为 train/val（默认 8:2）
+
+## 模型训练
 
 ```powershell
 python train.py --config config.yaml
 ```
 
-Key configuration knobs (from `config.yaml`):
+常用配置项（`config.yaml`）：
 
-- `model.num_classes`: number of detection classes.
-- `model.backbone_depth`: choose 18, 34, or 50.
-- `data.source_dir`: flat dataset root，用于自动划分；留空则跳过该步骤。
-- `data.val_split`: 验证集占比（0-1）。
-- `runtime.epochs`, `runtime.device`, `runtime.checkpoint_dir`.
+- `model.num_classes`：类别数
+- `model.backbone_depth`：18 / 34 / 50
+- `data.source_dir`：平铺数据集目录（可选）
+- `data.val_split`：验证集比例
+- `runtime.epochs`：训练轮数
+- `runtime.device`：运行设备（cuda/cpu）
+- `runtime.checkpoint_dir`：权重输出目录
 
-Checkpoints are written to `./checkpoints/epoch_XXX.pt`. Resume training with `--resume path/to/checkpoint.pt`.
+训练权重默认保存到：
 
-## Validation
+- `./checkpoints/epoch_XXX.pt`
 
-```powershell
-python val.py --config config.yaml --checkpoint checkpoints/epoch_100.pt
-```
-
-Outputs the average loss on the validation split and the mean number of detections per image. Adjust confidence / NMS thresholds using `--conf` and `--nms`.
-
-## Inference
+## 模型验证
 
 ```powershell
-python predict.py --config config.yaml --checkpoint checkpoints/epoch_100.pt --image path/to/image.jpg --output runs/preds
+python val.py --config config.yaml --checkpoint checkpoints/epoch_010.pt
 ```
 
-You can also specify `--input-dir` for batch inference. Predictions are saved as JSON files with bounding boxes (in pixel coordinates), scores, and class IDs. The helper also supports `--conf` and `--nms` overrides for post-processing.
+可通过参数调整阈值：
 
-## Testing
+- `--conf`：置信度阈值
+- `--nms`：NMS IoU 阈值
+
+## 模型推理
+
+单图推理：
+
+```powershell
+python predict.py --config config.yaml --checkpoint checkpoints/epoch_010.pt --image path/to/image.jpg --output runs/preds
+```
+
+批量推理：
+
+```powershell
+python predict.py --config config.yaml --checkpoint checkpoints/epoch_010.pt --input-dir path/to/images --output runs/preds
+```
+
+输出为 JSON，包含检测框、分数和类别。
+
+## 测试
 
 ```powershell
 python -m pytest
 ```
 
-The smoke tests cover:
+测试覆盖：
 
-- Forward shape checks for the YOLO11 model on dummy tensors.
-- End-to-end loss computation with backprop to ensure gradients flow.
+- 模型前向输出形状检查
+- 检测损失反向传播可用性检查
 
-## References
+## 桌面应用（Windows）
 
-- Kaiming He et al., *Deep Residual Learning for Image Recognition*. CVPR 2016. https://arxiv.org/abs/1512.03385
-- Tsung-Yi Lin et al., *Feature Pyramid Networks for Object Detection*. CVPR 2017. https://arxiv.org/abs/1612.03144
-- Petar Veličković et al., *Graph Attention Networks*. ICLR 2018. https://arxiv.org/abs/1710.10903
+项目内置了桌面应用封装：
 
-## Roadmap / Ideas
+- 入口：`run_app.py`
+- UI：`app/main_window.py`
+- 推理封装：`app/infer_engine.py`
 
-- Implement stronger label assignment (e.g., SimOTA) and IoU-aware losses.
-- Add mixed-precision-friendly exponential moving average (EMA) weights.
-- Integrate richer augmentation (mosaic/mixup) and evaluation metrics (mAP@0.5:0.95).
-
-## Desktop App Wrapper (Windows Target)
-
-This repository now includes a desktop application wrapper for the model:
-
-- Entry: `run_app.py`
-- UI: `app/main_window.py`
-- Inference service: `app/infer_engine.py`
-
-### Launch App
+### 直接运行（开发模式）
 
 ```powershell
 pip install -r requirements.txt
 python run_app.py
 ```
 
-### App Features
+### 已实现功能
 
-- Load model config + checkpoint
-- Single-image detection with visual overlay
-- Batch detection for a folder
-- Export per-image JSON
-- Export batch CSV summary
-- Runtime logs in UI
+- 加载配置文件与模型权重
+- 单图识别（可视化框选）
+- 批量识别（目录）
+- 导出单图 JSON
+- 导出批量 CSV
+- 运行日志显示
 
-### Build Windows EXE (PyInstaller)
+## Windows 预构建包下载
 
-```powershell
-pip install pyinstaller
-pyinstaller --noconfirm --windowed --name SmartDetectionApp run_app.py
-```
+仓库已配置 GitHub Actions 自动构建 Windows 可执行文件。
 
-After build, executable is generated under `dist/SmartDetectionApp/`.
+- 工作流页面：
+  - https://github.com/Xu-Jack11/ShipDetection-App/actions/workflows/windows-build.yml
+- 运行记录：
+  - https://github.com/Xu-Jack11/ShipDetection-App/actions
 
-## Windows Build Artifact & Download
+下载步骤：
 
-Prebuilt Windows package is generated by GitHub Actions.
+1. 打开 Actions 页面。
+2. 进入最新一次成功的 `Build Windows App` 任务。
+3. 下载产物 `SmartDetectionApp-windows`。
+4. 解压后运行 `SmartDetectionApp.exe`。
 
-- Actions workflow: https://github.com/Xu-Jack11/ShipDetection-App/actions/workflows/windows-build.yml
-- Latest runs: https://github.com/Xu-Jack11/ShipDetection-App/actions
-
-### How to download prebuilt app
-
-1. Open the Actions page.
-2. Click the latest successful **Build Windows App** run.
-3. Download artifact **SmartDetectionApp-windows**.
-4. Unzip and run `SmartDetectionApp.exe`.
-
-### How to build locally on Windows
+## 在本地 Windows 构建 EXE
 
 ```powershell
-# 1) Enter project folder
+# 1) 进入项目目录
 cd ShipDetection-App
 
-# 2) Create and activate venv
+# 2) 创建并激活虚拟环境
 python -m venv .venv
 .\.venv\Scripts\activate
 
-# 3) Install dependencies
+# 3) 安装依赖
 python -m pip install --upgrade pip
 pip install -r requirements.txt
 pip install pyinstaller
 
-# 4) Build executable
+# 4) 打包
 pyinstaller --noconfirm --clean --windowed --name SmartDetectionApp run_app.py
 ```
 
-After local build, output is under:
+构建完成后产物位置：
 
 - `dist/SmartDetectionApp/SmartDetectionApp.exe`
-- zipped package (optional, manual): `dist/SmartDetectionApp-windows.zip`
+- 可选手动压缩包：`dist/SmartDetectionApp-windows.zip`
 
-### Notes for first run on Windows
+## Windows 首次运行说明
 
-- If SmartScreen warns, click `More info` -> `Run anyway` (unsigned app).
-- Ensure model checkpoint (`.pt`) and `config.yaml` are prepared.
-- In app UI, load config/checkpoint first, then run single/batch detection.
+- 若出现 SmartScreen 提示，可点击 `More info` → `Run anyway`（未签名应用常见提示）。
+- 请提前准备好 `config.yaml` 与模型权重 `.pt` 文件。
+- 在应用内先加载配置和权重，再进行单图/批量识别。
+
+## 参考文献
+
+- Kaiming He et al., Deep Residual Learning for Image Recognition, CVPR 2016
+- Tsung-Yi Lin et al., Feature Pyramid Networks for Object Detection, CVPR 2017
+- Petar Veličković et al., Graph Attention Networks, ICLR 2018
