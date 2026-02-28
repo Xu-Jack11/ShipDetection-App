@@ -94,3 +94,36 @@ The smoke tests cover:
 - Implement stronger label assignment (e.g., SimOTA) and IoU-aware losses.
 - Add mixed-precision-friendly exponential moving average (EMA) weights.
 - Integrate richer augmentation (mosaic/mixup) and evaluation metrics (mAP@0.5:0.95).
+
+## Desktop App Wrapper (Windows Target)
+
+This repository now includes a desktop application wrapper for the model:
+
+- Entry: `run_app.py`
+- UI: `app/main_window.py`
+- Inference service: `app/infer_engine.py`
+
+### Launch App
+
+```powershell
+pip install -r requirements.txt
+python run_app.py
+```
+
+### App Features
+
+- Load model config + checkpoint
+- Single-image detection with visual overlay
+- Batch detection for a folder
+- Export per-image JSON
+- Export batch CSV summary
+- Runtime logs in UI
+
+### Build Windows EXE (PyInstaller)
+
+```powershell
+pip install pyinstaller
+pyinstaller --noconfirm --windowed --name SmartDetectionApp run_app.py
+```
+
+After build, executable is generated under `dist/SmartDetectionApp/`.
