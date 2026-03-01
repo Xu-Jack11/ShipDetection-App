@@ -32,21 +32,60 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
-      - name: Build EXE with PyInstaller
+      - name: Download model weights from Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          New-Item -ItemType Directory -Force -Path assets/checkpoints | Out-Null
+          gh release download v0.1-models --pattern "*.pt" --dir assets/checkpoints
+          $models = Get-ChildItem -Path assets/checkpoints -Filter *.pt
+          if (-not $models -or $models.Count -eq 0) {
+            throw "权重下载失败，assets/checkpoints 中没有 .pt 文件。"
+          }
+          Write-Host "已下载权重："
+          $models | ForEach-Object { Write-Host " - $($_.Name) ($([math]::Round($_.Length/1MB, 1)) MB)" }
+
+      - name: Validate bundled assets
         shell: pwsh
         run: |
-          pyinstaller --noconfirm --clean --windowed --name SmartDetectionApp run_app.py
+          if (-not (Test-Path "assets/config.yaml")) {
+            throw "缺少 assets/config.yaml，无法构建内置配置版本。"
+          }
+          $models = Get-ChildItem -Path "assets/checkpoints" -File -Include *.pt,*.pth -ErrorAction SilentlyContinue
+          if (-not $models -or $models.Count -eq 0) {
+            throw "缺少内置模型权重。"
+          }
+          Write-Host "资产验证通过，模型数量: $($models.Count)"
 
-      - name: Pack build output
+      - name: Build EXE with PyInstaller (bundle config + model)
         shell: pwsh
         run: |
-          Compress-Archive -Path dist/SmartDetectionApp/* -DestinationPath dist/SmartDetectionApp-windows.zip -Force
+          $pyArgs = @(
+            "--noconfirm",
+            "--clean",
+            "--windowed",
+            "--name", "SmartDetectionApp",
+            "--add-data", "assets/config.yaml;assets"
+          )
+          $models = Get-ChildItem -Path "assets/checkpoints" -File -Include *.pt,*.pth
+          foreach ($m in $models) {
+            $pyArgs += @("--add-data", "$($m.FullName);assets/checkpoints")
+          }
+          $pyArgs += "run_app.py"
+          pyinstaller @pyArgs
 
-      - name: Upload build artifact
+      - name: Upload build artifact (directory, no double-zip)
         uses: actions/upload-artifact@v4
         with:
           name: SmartDetectionApp-windows
-          path: dist/SmartDetectionApp-windows.zip
+          path: dist/SmartDetectionApp/
+
+      - name: Pack build output (tag builds only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          Compress-Archive -Path dist/SmartDetectionApp/* -DestinationPath dist/SmartDetectionApp-windows.zip -Force
 
       - name: Create GitHub Release (tag only)
         if: startsWith(github.ref, 'refs/tags/v')

@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
 )
 
 from .infer_engine import DetectionEngine
+from .resources import app_base_dir, list_embedded_checkpoints, resolve_default_checkpoint_path, resolve_default_config_path
 
 
 class MainWindow(QMainWindow):
@@ -37,7 +38,11 @@ class MainWindow(QMainWindow):
         self.current_result: dict | None = None
         self.batch_results: list[dict] = []
 
+        self.default_config_path = resolve_default_config_path()
+        self.default_checkpoint_path = resolve_default_checkpoint_path()
+
         self._build_ui()
+        self._report_resource_status()
 
     def _build_ui(self) -> None:
         root = QWidget()
@@ -53,14 +58,20 @@ class MainWindow(QMainWindow):
         cfg_group = QGroupBox("模型配置")
         cfg_grid = QGridLayout(cfg_group)
 
-        self.config_input = QLineEdit("config.yaml")
-        self.ckpt_input = QLineEdit("checkpoints/epoch_010.pt")
+        self.config_input = QLineEdit(str(self.default_config_path) if self.default_config_path else "")
+        self.ckpt_input = QLineEdit(str(self.default_checkpoint_path) if self.default_checkpoint_path else "")
         self.class_input = QLineEdit("ship")
+
+        self.config_input.setPlaceholderText("未找到内置配置，请手动选择 config.yaml")
+        self.ckpt_input.setPlaceholderText("未找到内置权重，请手动选择 .pt/.pth")
 
         btn_cfg = QPushButton("选择配置")
         btn_ckpt = QPushButton("选择权重")
+        btn_use_embedded = QPushButton("使用内置资源")
+
         btn_cfg.clicked.connect(self.choose_config)
         btn_ckpt.clicked.connect(self.choose_checkpoint)
+        btn_use_embedded.clicked.connect(self.use_embedded_resources)
 
         self.conf_spin = QDoubleSpinBox()
         self.conf_spin.setRange(0.01, 1.0)
@@ -92,20 +103,22 @@ class MainWindow(QMainWindow):
         cfg_grid.addWidget(self.ckpt_input, 1, 1)
         cfg_grid.addWidget(btn_ckpt, 1, 2)
 
-        cfg_grid.addWidget(QLabel("类别名称"), 2, 0)
-        cfg_grid.addWidget(self.class_input, 2, 1, 1, 2)
+        cfg_grid.addWidget(btn_use_embedded, 2, 0, 1, 3)
 
-        cfg_grid.addWidget(QLabel("置信度阈值"), 3, 0)
-        cfg_grid.addWidget(self.conf_spin, 3, 1)
-        cfg_grid.addWidget(QLabel("NMS阈值"), 3, 2)
-        cfg_grid.addWidget(self.nms_spin, 3, 3)
+        cfg_grid.addWidget(QLabel("类别名称"), 3, 0)
+        cfg_grid.addWidget(self.class_input, 3, 1, 1, 2)
 
-        cfg_grid.addWidget(self.btn_load, 4, 0)
-        cfg_grid.addWidget(self.btn_image, 4, 1)
-        cfg_grid.addWidget(self.btn_folder, 4, 2)
+        cfg_grid.addWidget(QLabel("置信度阈值"), 4, 0)
+        cfg_grid.addWidget(self.conf_spin, 4, 1)
+        cfg_grid.addWidget(QLabel("NMS阈值"), 4, 2)
+        cfg_grid.addWidget(self.nms_spin, 4, 3)
 
-        cfg_grid.addWidget(self.btn_export_json, 5, 0, 1, 2)
-        cfg_grid.addWidget(self.btn_export_csv, 5, 2, 1, 2)
+        cfg_grid.addWidget(self.btn_load, 5, 0)
+        cfg_grid.addWidget(self.btn_image, 5, 1)
+        cfg_grid.addWidget(self.btn_folder, 5, 2)
+
+        cfg_grid.addWidget(self.btn_export_json, 6, 0, 1, 2)
+        cfg_grid.addWidget(self.btn_export_csv, 6, 2, 1, 2)
 
         left.addWidget(cfg_group)
 
@@ -128,13 +141,42 @@ class MainWindow(QMainWindow):
         ts = datetime.now().strftime("%H:%M:%S")
         self.log.append(f"[{ts}] {text}")
 
+    def _report_resource_status(self) -> None:
+        self._append_log(f"运行目录: {app_base_dir()}")
+        if self.default_config_path:
+            self._append_log(f"已发现内置配置: {self.default_config_path}")
+        else:
+            self._append_log("未发现内置配置文件")
+
+        ckpts = list_embedded_checkpoints()
+        if ckpts:
+            self._append_log(f"已发现内置权重数量: {len(ckpts)}，默认使用: {ckpts[0]}")
+        else:
+            self._append_log("未发现内置权重文件")
+
+    def use_embedded_resources(self) -> None:
+        self.default_config_path = resolve_default_config_path()
+        self.default_checkpoint_path = resolve_default_checkpoint_path()
+
+        if self.default_config_path:
+            self.config_input.setText(str(self.default_config_path))
+        if self.default_checkpoint_path:
+            self.ckpt_input.setText(str(self.default_checkpoint_path))
+
+        if not self.default_config_path and not self.default_checkpoint_path:
+            QMessageBox.information(self, "提示", "未检测到内置配置与权重，请手动选择文件。")
+        else:
+            QMessageBox.information(self, "提示", "已填充内置配置/权重路径。")
+
     def choose_config(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(self, "选择配置文件", str(Path.cwd()), "YAML (*.yaml *.yml)")
+        start_dir = str(app_base_dir())
+        path, _ = QFileDialog.getOpenFileName(self, "选择配置文件", start_dir, "YAML (*.yaml *.yml)")
         if path:
             self.config_input.setText(path)
 
     def choose_checkpoint(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(self, "选择权重文件", str(Path.cwd()), "PyTorch Checkpoint (*.pt *.pth)")
+        start_dir = str(app_base_dir())
+        path, _ = QFileDialog.getOpenFileName(self, "选择权重文件", start_dir, "PyTorch Checkpoint (*.pt *.pth)")
         if path:
             self.ckpt_input.setText(path)
 
@@ -149,8 +191,20 @@ class MainWindow(QMainWindow):
             if not class_names:
                 class_names = ["ship"]
 
-            config_path = Path(self.config_input.text().strip())
-            checkpoint_path = Path(self.ckpt_input.text().strip())
+            config_text = self.config_input.text().strip()
+            ckpt_text = self.ckpt_input.text().strip()
+            if not config_text:
+                raise FileNotFoundError("未指定配置文件，请先选择 config.yaml")
+            if not ckpt_text:
+                raise FileNotFoundError("未指定权重文件，请先选择 .pt/.pth")
+
+            config_path = Path(config_text)
+            checkpoint_path = Path(ckpt_text)
+
+            if not config_path.exists():
+                raise FileNotFoundError(f"配置文件不存在: {config_path}")
+            if not checkpoint_path.exists():
+                raise FileNotFoundError(f"权重文件不存在: {checkpoint_path}")
 
             self.engine = DetectionEngine(config_path=config_path, class_names=class_names)
             self.engine.load_model(checkpoint_path)

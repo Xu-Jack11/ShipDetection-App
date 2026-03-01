@@ -11,10 +11,11 @@ __pycache__/
 venv/
 env/
 
-# PyTorch checkpoints
+# PyTorch checkpoints (weights stored in GitHub Releases, not git)
 checkpoints/
 *.pt
 *.pth
+assets/checkpoints/
 
 # Data directories
 data/
