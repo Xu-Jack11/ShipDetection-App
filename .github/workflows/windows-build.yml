@@ -52,7 +52,7 @@ jobs:
           if (-not (Test-Path "assets/config.yaml")) {
             throw "缺少 assets/config.yaml，无法构建内置配置版本。"
           }
-          $models = Get-ChildItem -Path "assets/checkpoints" -File -Include *.pt,*.pth -ErrorAction SilentlyContinue
+          $models = Get-ChildItem -Path "assets/checkpoints\*" -Include *.pt,*.pth -File -ErrorAction SilentlyContinue
           if (-not $models -or $models.Count -eq 0) {
             throw "缺少内置模型权重。"
           }
@@ -68,7 +68,7 @@ jobs:
             "--name", "SmartDetectionApp",
             "--add-data", "assets/config.yaml;assets"
           )
-          $models = Get-ChildItem -Path "assets/checkpoints" -File -Include *.pt,*.pth
+          $models = Get-ChildItem -Path "assets/checkpoints\*" -Include *.pt,*.pth -File
           foreach ($m in $models) {
             $pyArgs += @("--add-data", "$($m.FullName);assets/checkpoints")
           }
